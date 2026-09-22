@@ -1,10 +1,23 @@
-# dispatch
+<p align="center">
+  <a href="https://github.com/katoptra">
+    <picture>
+      <source media="(prefers-color-scheme: dark)" srcset="https://katoptra.org/brand/katoptra-mark-dark-224.png">
+      <img src="https://katoptra.org/brand/katoptra-mark-224.png" alt="Katoptra" width="112">
+    </picture>
+  </a>
+</p>
 
-[![check](https://github.com/katoptra/dispatch/actions/workflows/check.yml/badge.svg)](https://github.com/katoptra/dispatch/actions/workflows/check.yml)
-[![license](https://img.shields.io/github/license/katoptra/dispatch)](LICENSE)
-![Bendalloy](https://healthchecks.io/b/2/254c8ab8-5b1c-40e5-ae69-f34413b6b053.svg)
+<h1 align="center">dispatch</h1>
 
-The scheduler that starts every katoptra mirror. No mirror schedules itself; each waits
+<p align="center">The scheduler that starts every katoptra mirror.</p>
+
+<p align="center">
+  <a href="https://github.com/katoptra/dispatch/actions/workflows/check.yml"><img src="https://github.com/katoptra/dispatch/actions/workflows/check.yml/badge.svg" alt="check"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/github/license/katoptra/dispatch" alt="license"></a>
+  <img src="https://healthchecks.io/b/2/254c8ab8-5b1c-40e5-ae69-f34413b6b053.svg" alt="Bendalloy">
+</p>
+
+No mirror schedules itself; each waits
 for a `workflow_dispatch`, and this repository sends it. A systemd timer on a NixOS host
 ticks every five minutes, fires each job whose latest slot has not been fired yet, then
 pings one healthcheck. A host that was down fires each missed job once, for the latest
