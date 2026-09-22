@@ -14,7 +14,7 @@
 <p align="center">
   <a href="https://github.com/katoptra/dispatch/actions/workflows/check.yml"><img src="https://github.com/katoptra/dispatch/actions/workflows/check.yml/badge.svg" alt="check"></a>
   <a href="LICENSE"><img src="https://img.shields.io/github/license/katoptra/dispatch" alt="license"></a>
-  <img src="https://healthchecks.io/b/2/254c8ab8-5b1c-40e5-ae69-f34413b6b053.svg" alt="Bendalloy">
+  <a href="https://github.com/katoptra/dispatch#how-it-works"><img src="https://healthchecks.io/b/2/254c8ab8-5b1c-40e5-ae69-f34413b6b053.svg" alt="tick"></a>
 </p>
 
 No mirror schedules itself; each waits
