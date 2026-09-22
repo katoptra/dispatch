@@ -34,7 +34,7 @@ tasks:
           "" \
           "${c}read -- looks, changes nothing${r}" \
           "  task targets      Every job and its UTC slot times, read from schedules/" \
-          "  task runs         Recent runs of each target on GitHub ${d}(LIMIT=10)${r}" \
+          "  task runs         Recent runs of each target on GitHub, as a table ${d}(LIMIT=3)${r}" \
           "                    ${d}needs gh logged in; every run should say workflow_dispatch${r}" \
           "" \
           "${c}checks -- offline, no credentials, inside the toolbox image${r}" \
@@ -94,19 +94,26 @@ tasks:
         vars: {CLI_ARGS: go run . --list}
 
   runs:
-    desc: Recent runs of each target on GitHub - workflow_dispatch ones came from here
+    desc: Recent runs of each target on GitHub, as a table - workflow_dispatch ones came from here
     silent: true
     vars:
-      LIMIT: '{{.LIMIT | default 10}}'
+      LIMIT: '{{.LIMIT | default 3}}'
     cmds:
       # GH_PAGER=cat: on a terminal gh opens its pager for each target and waits on it.
+      # An unfinished run has an empty conclusion, so its status stands in.
       - |
         task run -- go run . --list | awk 'NR > 1 { print $1 }' | while read -r id; do
-          printf '\n%s\n' "$id"
           GH_PAGER=cat gh run list --repo "${id%/*}" --workflow "${id##*/}" --limit {{.LIMIT}} \
-            --json createdAt,event,conclusion \
-            --jq '.[] | "  \(.createdAt[0:16] | sub("T"; " "))  \(.event)  \(.conclusion // "running")"' </dev/null
-        done
+            --json createdAt,event,status,conclusion \
+            --jq '.[] | [(.createdAt[0:16] | sub("T"; " ")), .event, (if .status == "completed" then .conclusion else .status end)] | @tsv' </dev/null \
+            | awk -v id="$id" '{ print id "\t" $0 }'
+        done | awk -F'\t' '
+          { job[NR] = $1; at[NR] = $2; ev[NR] = $3; res[NR] = $4; if (length($1) > w) w = length($1) }
+          END {
+            fmt = "%-" w "s  %-16s  %-17s  %s\n"
+            printf fmt, "JOB", "STARTED (UTC)", "EVENT", "RESULT"
+            for (i = 1; i <= NR; i++) printf fmt, (job[i] == job[i-1] ? "" : job[i]), at[i], ev[i], res[i]
+          }'
 
   clean:
     desc: Remove the toolbox image and the Go build cache - the next task rebuilds both

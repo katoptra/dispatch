@@ -138,7 +138,7 @@ has the command for a laptop without nix. Only a real tick proves the App: on th
 ```sh
 task targets           # what runs and when
 task runs              # each target's recent runs on GitHub; needs gh logged in
-task runs LIMIT=20     # more of them
+task runs LIMIT=10     # more of them
 ```
 
 Every run a target shows as `workflow_dispatch` came from here. On the host:
