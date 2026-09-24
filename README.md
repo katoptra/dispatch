@@ -180,8 +180,7 @@ sudo STATE_DIRECTORY=/var/lib/private/katoptra-dispatch katoptra-dispatch --dry-
 ## Reference
 
 [`CLAUDE.md`](CLAUDE.md) is the design: the files, the constraints, and what breaks if a
-choice is undone. The spec behind it, with the options weighed and rejected, is under
-[`docs/superpowers/specs/`](docs/superpowers/specs).
+choice is undone.
 
 Pull requests are welcome.
 

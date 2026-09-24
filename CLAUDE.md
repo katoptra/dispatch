@@ -1,8 +1,7 @@
 # dispatch
 
 Starts the katoptra mirrors' workflows on UTC slots, from a systemd timer on a NixOS host.
-`README.md` is for users; this file is the design. The spec and the reasoning behind each
-choice: `docs/superpowers/specs/2026-09-21-katoptra-dispatch-design.md`.
+`README.md` is for users; this file is the design.
 
 ## The files
 
