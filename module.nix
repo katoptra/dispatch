@@ -1,6 +1,6 @@
-# The scheduler as a NixOS service: a timer every five minutes starting one oneshot tick.
-# It takes three file paths and knows nothing of where they come from; the host renders them
-# (jshvn/jgrid.net: jgrid.secretTemplates into /run/secrets).
+# The scheduler as a NixOS service: a timer that starts one oneshot tick at intervals of
+# five minutes. It gets three file paths, and it does not know the source of the files. The
+# host makes them (the host's flake: jgrid.secretTemplates into /run/secrets).
 self:
 {
   config,
@@ -11,7 +11,8 @@ self:
 let
   cfg = config.services.katoptra-dispatch;
   package = self.packages.${pkgs.stdenv.hostPlatform.system}.default;
-  # A string, never a Nix path: a path literal would copy the secret into the world-readable store.
+  # A string, not a Nix path. A path literal puts a copy of the secret in the Nix store,
+  # which all users can read.
   secretPath =
     description:
     lib.mkOption {
@@ -31,9 +32,10 @@ in
     systemd.timers.katoptra-dispatch = {
       description = "katoptra-dispatch tick, every five minutes";
       wantedBy = [ "timers.target" ];
-      # :02, :07 .. :42 .. :57, so the slot minute is always a tick. UTC whatever the host's
-      # zone. No Persistent=: every tick reconciles from the state file, so a missed tick is
-      # caught up by the next one.
+      # :02, :07 .. :42 .. :57. Thus, the slot minute is always a tick. The calendar is in
+      # UTC, and the time zone of the host has no effect. No Persistent=: each tick compares
+      # the slots with the state file. Thus, the next tick does the work of a tick that did
+      # not occur.
       timerConfig.OnCalendar = "*:02/5 UTC";
     };
 

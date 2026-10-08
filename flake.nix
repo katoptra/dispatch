@@ -1,7 +1,8 @@
 {
   description = "katoptra-dispatch: starts the katoptra mirrors' workflows on UTC slots";
 
-  # The same release jshvn/jgrid.net builds its hosts from, so the host's lock can follow it.
+  # The same release that the host's flake builds its hosts from. Thus, the host's lock
+  # can follow it.
   inputs.nixpkgs.url = "github:NixOS/nixpkgs/nixos-26.05";
 
   outputs =
@@ -26,10 +27,11 @@
               (lib.fileset.fileFilter (f: f.hasExt "go") ./.)
             ];
           };
-          vendorHash = null; # standard library only
-          # go test runs in buildGoModule's checkPhase; vet first, so either fails the host's build
+          vendorHash = null; # only the standard library
+          # go test operates in the checkPhase of buildGoModule. go vet operates first. Thus,
+          # an error from go vet or go test stops the build on the host.
           preCheck = "go vet ./...";
-          # the module path's last element would name it `dispatch`
+          # without this step, the name is `dispatch`, the last part of the module path
           postInstall = "mv $out/bin/dispatch $out/bin/katoptra-dispatch";
           meta.mainProgram = "katoptra-dispatch";
         };
@@ -37,9 +39,9 @@
 
       nixosModules.default = import ./module.nix self;
 
-      # The package (its tests included), and the module's two units rendered from a minimal
-      # system: evaluation alone, no VM. ponytail: a nixosTest would boot the timer for real;
-      # add one if a unit mistake ever gets past this.
+      # The package (with its tests), and the two units of the module, made from a small
+      # system. Nix makes the units, but it does not boot a VM. ponytail: a nixosTest boots
+      # the timer in a VM. If this check does not find a unit error, add a nixosTest.
       checks = forAll (
         pkgs:
         let
@@ -68,7 +70,8 @@
         in
         {
           package = self.packages.${system}.default;
-          # the rendered units, failing if ExecStart names anything but an executable
+          # the two units. This check stops with an error if ExecStart is not an
+          # executable.
           module = pkgs.runCommand "katoptra-dispatch-units" { } ''
             service=${units."katoptra-dispatch.service".unit}/katoptra-dispatch.service
             exe=$(sed -n 's/^ExecStart=//p' "$service")

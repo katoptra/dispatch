@@ -28,7 +28,8 @@ var testKey = func() *rsa.PrivateKey {
 	return k
 }()
 
-// github serves the three endpoints; dispatch answers with the statuses in order, then 204.
+// github is a test server for the three endpoints. The /dispatches endpoint sends the
+// statuses in dispatch, in sequence, and then 204.
 func github(t *testing.T, dispatch ...int) (*GitHub, *[]string, *[]time.Duration) {
 	t.Helper()
 	var hits []string
