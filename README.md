@@ -134,7 +134,7 @@ does not save the state, start a workflow, or send a ping.
 - **The healthcheck gets a `/fail` ping.** The body of the ping and
   `journalctl -u katoptra-dispatch -p err` show the error. If the error is from a workflow
   start, that job gets no run for that slot, and it starts again at its next slot. If the
-  error occurs before the tick saves the state, the tick records no slot, and the next tick
+  error occurs before the tick saves the state, the tick saves no slot, and the next tick
   tries again.
 - **A workflow start gets a 404.** The default branch of the repository is not `main`, or
   the repository does not have the workflow file.
