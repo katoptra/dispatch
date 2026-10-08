@@ -62,8 +62,8 @@ items:
 - It sends a ping to its healthcheck. The scheduler starts runs, but it does not know the
   result of a run.
 
-The host uses a change when the host's flake lock moves to the new commit. A new job starts
-at the next tick.
+The host gets a change when the host's flake moves its lock to a new commit of this flake.
+A new job starts at the next tick.
 
 ## How it works
 
@@ -78,7 +78,7 @@ flowchart LR
 The timer starts a tick at :02, at :07, and at intervals of five minutes after that. Each
 tick does these steps:
 
-1. It loads `state.json`, which holds the last dispatched slot of each job.
+1. It loads `state.json`, which contains the last dispatched slot of each job.
 2. It finds the jobs to start. If a job had no run for some slots, it starts one time, for
    the latest slot.
 3. It gets a token for the GitHub App.
@@ -132,8 +132,10 @@ does not save the state, start a workflow, or send a ping.
 - **The healthcheck gets no pings.** The host or its timer does not operate. When the host
   and the timer operate again, each job that had no run for a slot gets one run.
 - **The healthcheck gets a `/fail` ping.** The body of the ping and
-  `journalctl -u katoptra-dispatch -p err` show the error. The job gets no run for that
-  slot. It starts again at its next slot.
+  `journalctl -u katoptra-dispatch -p err` show the error. If the error is from a workflow
+  start, that job gets no run for that slot, and it starts again at its next slot. If the
+  error occurs before the tick saves the state, the tick records no slot, and the next tick
+  tries again.
 - **A workflow start gets a 404.** The default branch of the repository is not `main`, or
   the repository does not have the workflow file.
 - **Each tick stops with an error about `state.json`.** The file is corrupted. No job starts
@@ -144,11 +146,14 @@ does not save the state, start a workflow, or send a ping.
 
 1. **Fork this repository.** Replace the files in `schedules/` with files for your jobs.
    The tests accept only `katoptra/` repositories. Change that prefix in the tests to the
-   name of your organization.
-2. **Make a GitHub App in your organization.** Give it one permission: Actions, read and
-   write. A webhook is not necessary. Install the App on all repositories in the
-   organization. Then each new repository also gets the App automatically. Record the App
-   ID. Make a private key. You can use the key in the format that GitHub gives.
+   name of your organization. In `main.go`, change `Org: "katoptra"` to the name of your
+   organization.
+2. **Make a GitHub App in your organization:**
+   1. Give the App one permission: Actions, read and write. A webhook is not necessary.
+   2. Install the App on all repositories in the organization. Then each new repository
+      also gets the App automatically.
+   3. Record the App ID.
+   4. Make a private key. You can use the key in the format that GitHub gives.
 3. **Make a healthchecks.io check** with a period of 5 minutes and a grace time of 10
    minutes.
 4. **Add the flake to your NixOS host.** Give the module the paths of three files:
@@ -170,11 +175,13 @@ does not save the state, start a workflow, or send a ping.
 
    systemd loads the files with `LoadCredential=`. Thus, the files can have the owner `root`
    and the mode 0400.
-5. **Make sure that the scheduler operates.** On a laptop with go-task and Docker or Apple
-   `container`, use `task check` and `task targets`. `nix flake check` builds the package
-   and the systemd units. [`CLAUDE.md`](CLAUDE.md) shows how to use it without nix. Only a
-   tick on the host is a full test of the App. On the host, use
-   `sudo systemctl start katoptra-dispatch`. Then read the journal.
+5. **Make sure that the scheduler operates:**
+   1. On a laptop with go-task and Docker or Apple `container`, use `task check`. Then use
+      `task targets`.
+   2. Use `nix flake check`. It builds the package and the systemd units.
+      [`CLAUDE.md`](CLAUDE.md) shows how to use it without nix.
+   3. Only a tick on the host is a full test of the App. On the host, use
+      `sudo systemctl start katoptra-dispatch`. Then read the journal.
 
 ## License
 
