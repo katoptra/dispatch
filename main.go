@@ -130,8 +130,8 @@ func credential(dir, name string) (string, error) {
 }
 
 // ping sends the result of the tick to healthchecks.io. If the tick has no errors, ping
-// sends to the URL. If the tick has errors, ping sends to /fail, with the errors as the
-// body.
+// sends the request to the URL. If the tick has errors, ping sends the request to /fail,
+// with the errors as the body.
 //
 // ping sends the request a maximum of three times. If the ping does not get to
 // healthchecks.io, the caller records a warning, not an error. The URL is the credential of

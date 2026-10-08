@@ -1,7 +1,12 @@
 package main
 
-// This file does four steps as the GitHub App: it signs a JWT, finds the installation
-// of the App on the organization, gets an installation token, and dispatches a workflow.
+// This file does four steps as the GitHub App:
+//
+//  1. It signs a JWT.
+//  2. It finds the installation of the App on the organization.
+//  3. It gets an installation token.
+//  4. It dispatches a workflow.
+//
 // It uses no SDK, only three HTTP requests.
 
 import (
