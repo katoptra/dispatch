@@ -1,7 +1,8 @@
 package main
 
-// The GitHub App side: sign a JWT, find the installation of the App on the org, get an
-// installation token, and dispatch a workflow. It uses no SDK, only three HTTP requests.
+// This file does four steps as the GitHub App: it signs a JWT, finds the installation
+// of the App on the organization, gets an installation token, and dispatches a workflow.
+// It uses no SDK, only three HTTP requests.
 
 import (
 	"bytes"
@@ -22,8 +23,8 @@ import (
 	"time"
 )
 
-// backoff is the wait before each retry of a temporary error: three retries, 70 s in total.
-// If a retry cannot start before the deadline of the context, call does not make it.
+// backoff is the interval before each retry of a temporary error: three retries, 70 s in
+// total. If a retry cannot start before the deadline of the context, call does not make it.
 var backoff = []time.Duration{10 * time.Second, 20 * time.Second, 40 * time.Second}
 
 // StatusError is a GitHub response with a status other than 2xx.
@@ -38,10 +39,10 @@ func (e *StatusError) Error() string { return e.Msg }
 // GitHub rejected the request, and a retry cannot change that. For example: a missing
 // workflow file, an App without the permission, or no installation.
 //
-// call tries a request that starts a run (safe false) again only if GitHub did not do the
-// request. This is true when the connection did not open, or when GitHub rejected the
-// request before it read it (408, 429). A 5xx or a timeout can come after GitHub accepted
-// the request. Then a retry starts a second run.
+// call tries a request that starts a run (safe false) again only if GitHub did not start
+// the run. GitHub did not start the run if the connection did not open, or if GitHub
+// rejected the request before it read it (408, 429). A 5xx or a timeout can follow a
+// request that GitHub accepted. Then a retry starts a second run.
 func retryable(err error, safe bool) bool {
 	var s *StatusError
 	if errors.As(err, &s) {

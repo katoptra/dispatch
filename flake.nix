@@ -1,8 +1,8 @@
 {
   description = "katoptra-dispatch: starts the katoptra mirrors' workflows on UTC slots";
 
-  # The same release that the host's flake builds its hosts from. Thus, the host's lock
-  # can follow it.
+  # This is the same release that the host's flake builds its hosts from. Thus, the host's
+  # lock can use the same release.
   inputs.nixpkgs.url = "github:NixOS/nixpkgs/nixos-26.05";
 
   outputs =
@@ -39,9 +39,10 @@
 
       nixosModules.default = import ./module.nix self;
 
-      # The package (with its tests), and the two units of the module, made from a small
-      # system. Nix makes the units, but it does not boot a VM. ponytail: a nixosTest boots
-      # the timer in a VM. If this check does not find a unit error, add a nixosTest.
+      # These checks are the package (with its tests) and the two units of the module, made
+      # from a small system. Nix makes the units, but it does not boot a VM. ponytail: a
+      # nixosTest boots the timer in a VM. If a unit error occurs on a host and this check
+      # did not find it, add a nixosTest.
       checks = forAll (
         pkgs:
         let

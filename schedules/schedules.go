@@ -3,15 +3,16 @@
 // Each file adds the jobs of its repository to the list below. A change to the jobs or to
 // their slots is only in this directory.
 //
-// Before you add a workflow, make sure that it has these three items. No code here can
-// examine them. If a workflow does not have all three, a problem with its runs can stay
-// unknown:
+// Before you add a workflow, make sure that it has these three items:
 //
 //  1. It has `workflow_dispatch:` in `on:`.
 //  2. It has a `concurrency` group with `cancel-in-progress: false`. Thus, a workflow start
 //     during a run waits in the queue, and two runs do not operate at the same time.
 //  3. The workflow sends a ping to its healthcheck. This repository does not get the
 //     result of a run.
+//
+// No code here can examine these items. If a workflow does not have all three, a problem
+// with its runs can stay unknown.
 package schedules
 
 import (
@@ -63,14 +64,14 @@ const (
 	Hourly    = Slot(1<<24 - 1)
 )
 
-// Minute is the minute of the hour for each slot. It is not on the hour, because GitHub
-// cancels work on the hour first when its load is high. It is also on a tick of the */5
-// timer that starts at :02.
+// Minute is the minute of the hour for each slot. It is not minute 0: when the load on
+// GitHub is high, GitHub decreases the load at minute 0 first. It is also on a tick of the
+// */5 timer that starts at :02.
 const Minute = 42
 
 // Latest gives the latest slot time in s: the last slot time at or before now, in UTC. The
 // slots of the same day and of the day before are always sufficient to find it. The bool is
-// false when s holds no hour.
+// false when s contains no hour.
 func (s Slot) Latest(now time.Time) (time.Time, bool) {
 	now = now.UTC()
 	for day := 0; day < 2; day++ {
@@ -124,8 +125,8 @@ func (s Slot) String() string {
 	return strings.Join(parts, " | ")
 }
 
-// Job is one workflow in one repository. The scheduler dispatches it on `main` in each
-// slot that it holds.
+// Job is one workflow in one repository. The scheduler dispatches it on `main` in each of
+// its slots.
 type Job struct {
 	Repo  string // "katoptra/<name>"
 	File  string // the name of the workflow file, for example "sync.yml"

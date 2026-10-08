@@ -14,7 +14,7 @@ import (
 	"github.com/katoptra/dispatch/schedules"
 )
 
-// stateFile holds the last dispatched slot of each job, by job id.
+// stateFile contains the last dispatched slot of each job, by job id.
 const stateFile = "state.json"
 
 // State is a map from a job id to the last dispatched slot of that job, in UTC.
@@ -35,14 +35,16 @@ func LoadState(dir string) (State, error) {
 	if err := json.Unmarshal(b, &s); err != nil {
 		return nil, fmt.Errorf("state file %s is corrupt: %w", filepath.Join(dir, stateFile), err)
 	}
-	if s == nil { // json.Unmarshal accepts `null`. But a `null` file is not a missing file, and it is an error.
+	// json.Unmarshal accepts `null`. But a `null` file is not a missing file: LoadState
+	// gives an error for it, not empty state.
+	if s == nil {
 		return nil, fmt.Errorf("state file %s holds no object", filepath.Join(dir, stateFile))
 	}
 	return s, nil
 }
 
-// SaveState replaces the state file in dir atomically. After a crash, dir holds the full
-// previous file or the full new file.
+// SaveState replaces the state file in dir in one step. After a crash, dir contains the
+// full previous file or the full new file.
 func SaveState(dir string, s State) error {
 	b, err := json.MarshalIndent(s, "", "  ")
 	if err != nil {
@@ -132,9 +134,9 @@ type Dispatcher interface {
 //
 // Tick records the slots before it dispatches. Thus, after a crash or an error from
 // Dispatch, that slot gets no run. A slot does not get two runs: a maximum of one run for
-// each slot. Prepare comes before the record. Thus, if GitHub or the network is not
-// available before a run can start, the slot gets its run at the next tick, after five
-// minutes.
+// each slot. Tick does Prepare before it records the slots. Thus, if GitHub or the network
+// is not available before a run can start, the slot gets its run at the next tick, after
+// five minutes.
 func Tick(ctx context.Context, dir string, jobs []schedules.Job, now time.Time, d Dispatcher, dryRun bool, log *Log) {
 	unlock, err := lock(dir)
 	if err != nil {

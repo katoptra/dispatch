@@ -67,7 +67,7 @@ tasks:
     run: once
     silent: true
     # If the image is there, task does not build it again. Thus, a change to the Dockerfile
-    # does not cause a new build. Do `task clean`, then use a task.
+    # does not cause a new build. Do `task clean`. Then the next task builds a new image.
     status:
       - '{{.ENGINE}} image inspect {{.IMAGE}} >/dev/null 2>&1'
     cmds:
@@ -102,8 +102,8 @@ tasks:
       LIMIT: '{{.LIMIT | default 3}}'
     cmds:
       # GH_PAGER=cat: on a terminal, gh opens its pager for each target and waits for it.
-      # A run in progress has an empty `conclusion`. Thus, the table shows its `status` as
-      # an alternative.
+      # If the `status` of a run is not `completed`, its `conclusion` is empty. Thus, the
+      # table shows the `status` as an alternative.
       - |
         task run -- go run . --list | awk 'NR > 1 { print $1 }' | while read -r id; do
           GH_PAGER=cat gh run list --repo "${id%/*}" --workflow "${id##*/}" --limit {{.LIMIT}} \

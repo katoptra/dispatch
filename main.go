@@ -1,7 +1,7 @@
 // katoptra-dispatch is one tick of the katoptra scheduler. It finds each job with a latest
-// slot that the state does not hold. It records that slot first, and then it starts the job.
-// At the end, it sends a ping to the healthcheck of the scheduler. A systemd timer starts it
-// at intervals of five minutes (refer to module.nix).
+// slot that the state does not contain. It records that slot first, and then it starts the
+// job. At the end, it sends a ping to the healthcheck of the scheduler. A systemd timer
+// starts it at intervals of five minutes (refer to module.nix).
 package main
 
 import (
@@ -130,10 +130,12 @@ func credential(dir, name string) (string, error) {
 }
 
 // ping sends the result of the tick to healthchecks.io. If the tick has no errors, ping
-// sends to the URL. If not, it sends to /fail, with the errors as the body. It sends the
-// request a maximum of three times. If the ping does not get to healthchecks.io, the caller
-// records a warning, not an error. The URL is the credential of the check. Thus, no error
-// from ping contains the URL.
+// sends to the URL. If the tick has errors, ping sends to /fail, with the errors as the
+// body.
+//
+// ping sends the request a maximum of three times. If the ping does not get to
+// healthchecks.io, the caller records a warning, not an error. The URL is the credential of
+// the check. Thus, no error from ping contains the URL.
 func ping(client *http.Client, url string, errs []string, sleep func(time.Duration)) error {
 	body := strings.Join(errs, "\n")
 	if len(errs) > 0 {
