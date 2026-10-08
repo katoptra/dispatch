@@ -1,9 +1,10 @@
-# katoptra-dispatch: starts the katoptra mirrors' workflows on UTC slots, from a systemd
-# timer on a jgrid.net host. Everything here is a local check or a read; nothing deploys.
-# The host picks up a change when jshvn/jgrid.net bumps this flake in its lock.
+# katoptra-dispatch starts the workflows of the katoptra mirrors at UTC slots, from a
+# systemd timer on a jgrid.net host. Each task here is a local check or a read. No task
+# deploys a change. The host gets a change when the host's flake moves its lock to a new
+# commit of this flake.
 #
-# Every Go command runs inside the toolbox image (Dockerfile), so the host supplies a
-# container engine and go-task and nothing else. The design is CLAUDE.md.
+# Each Go command operates in the toolbox image (Dockerfile). Thus, a laptop or a CI runner
+# must supply only a container engine and go-task. CLAUDE.md gives the design.
 version: '3'
 
 vars:
@@ -16,12 +17,13 @@ vars:
       else echo docker
       fi
   IMAGE: katoptra-dispatch-toolbox:local
-  # Apple container draws a progress spinner on a terminal; Docker's run has no such flag.
+  # Apple container shows a progress spinner on a terminal. `docker run` has no such flag.
   QUIET: '{{if eq .ENGINE "container"}}--progress none{{end}}'
 
 tasks:
-  # The menu. ponytail: hand-maintained listing -- go-task can neither group nor annotate,
-  # so a new task means a line below. `task --list` stays the generated view.
+  # The menu. ponytail: a menu that we keep manually. go-task cannot put tasks in groups or
+  # add notes to them. Thus, add a line below for each new task. `task --list` gives the
+  # view that go-task makes.
   default:
     desc: Print the menu
     silent: true
@@ -64,8 +66,8 @@ tasks:
     desc: Build the toolbox image
     run: once
     silent: true
-    # Presence is the freshness check, so a Dockerfile edit does not rebuild on its own:
-    # task clean, then any task.
+    # If the image is there, task does not build it again. Thus, a change to the Dockerfile
+    # does not cause a new build. Do `task clean`. Then the next task builds a new image.
     status:
       - '{{.ENGINE}} image inspect {{.IMAGE}} >/dev/null 2>&1'
     cmds:
@@ -99,8 +101,9 @@ tasks:
     vars:
       LIMIT: '{{.LIMIT | default 3}}'
     cmds:
-      # GH_PAGER=cat: on a terminal gh opens its pager for each target and waits on it.
-      # An unfinished run has an empty conclusion, so its status stands in.
+      # GH_PAGER=cat: on a terminal, gh opens its pager for each target and waits for it.
+      # If the `status` of a run is not `completed`, its `conclusion` is empty. Thus, the
+      # table shows the `status` as an alternative.
       - |
         task run -- go run . --list | awk 'NR > 1 { print $1 }' | while read -r id; do
           GH_PAGER=cat gh run list --repo "${id%/*}" --workflow "${id##*/}" --limit {{.LIMIT}} \

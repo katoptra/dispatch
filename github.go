@@ -1,7 +1,13 @@
 package main
 
-// The GitHub App's side: sign a JWT, find the App's installation on the org, mint an
-// installation token, dispatch a workflow. No SDK, three requests.
+// This file does four steps as the GitHub App:
+//
+//  1. It signs a JWT.
+//  2. It finds the installation of the App on the organization.
+//  3. It gets an installation token.
+//  4. It dispatches a workflow.
+//
+// It uses no SDK, only three HTTP requests.
 
 import (
 	"bytes"
@@ -22,11 +28,11 @@ import (
 	"time"
 )
 
-// backoff is the wait before each retry of a transient failure: three retries, 70 s in all.
-// A retry whose wait would pass the context's deadline is not made.
+// backoff is the interval before each retry of a temporary error: three retries, 70 s in
+// total. If a retry cannot start before the deadline of the context, call does not make it.
 var backoff = []time.Duration{10 * time.Second, 20 * time.Second, 40 * time.Second}
 
-// StatusError is GitHub answering with something other than 2xx.
+// StatusError is a GitHub response with a status other than 2xx.
 type StatusError struct {
 	Status int
 	Msg    string
@@ -34,12 +40,14 @@ type StatusError struct {
 
 func (e *StatusError) Error() string { return e.Msg }
 
-// retryable is a failure another attempt may clear. Any other 4xx is a refusal no retry can
-// change: a missing workflow file, an App without the permission, no installation.
+// retryable tells if call can try again after err. With a 4xx other than 408 and 429,
+// GitHub rejected the request, and a retry cannot change that. For example: a missing
+// workflow file, an App without the permission, or no installation.
 //
-// A request that starts a run (safe false) is retried only when GitHub cannot have acted on
-// it: the connection never opened, or GitHub turned it away unread (408, 429). A 5xx or a
-// timeout can follow a dispatch GitHub already accepted, and a retry would be a second run.
+// call tries a request that starts a run (safe false) again only if GitHub did not start
+// the run. GitHub did not start the run if the connection did not open, or if GitHub
+// rejected the request before it read it (408, 429). A 5xx or a timeout can follow a
+// request that GitHub accepted. Then a retry starts a second run.
 func retryable(err error, safe bool) bool {
 	var s *StatusError
 	if errors.As(err, &s) {
@@ -49,8 +57,8 @@ func retryable(err error, safe bool) bool {
 	return safe || errors.As(err, &op) && op.Op == "dial"
 }
 
-// ParseKey reads the App's private key. GitHub issues PKCS#1; PKCS#8 is accepted too, so a
-// converted key still works.
+// ParseKey reads the private key of the App. GitHub gives a PKCS#1 key. ParseKey also
+// accepts PKCS#8. Thus, you can also use a converted key.
 func ParseKey(data []byte) (*rsa.PrivateKey, error) {
 	block, _ := pem.Decode(data)
 	if block == nil {
@@ -70,8 +78,9 @@ func ParseKey(data []byte) (*rsa.PrivateKey, error) {
 	return rk, nil
 }
 
-// AppJWT signs a short-lived App JWT. Backdated 60 s because GitHub rejects a future iat,
-// and 9 minutes long against GitHub's 10-minute ceiling.
+// AppJWT signs an App JWT with a short life. Its iat is 60 s before now, because GitHub
+// rejects an iat after the time on its servers. Its life is 9 minutes, less than the
+// 10-minute maximum of GitHub.
 func AppJWT(appID string, key *rsa.PrivateKey, now time.Time) (string, error) {
 	enc := base64.RawURLEncoding
 	iat := now.Unix() - 60
@@ -88,12 +97,12 @@ func AppJWT(appID string, key *rsa.PrivateKey, now time.Time) (string, error) {
 	return signed + "." + enc.EncodeToString(sig), nil
 }
 
-// GitHub dispatches workflows as the App. Prepare mints one installation token and keeps it
-// in memory only.
+// GitHub dispatches workflows as the App. Prepare gets one installation token and keeps it
+// only in memory.
 type GitHub struct {
 	API   string // https://api.github.com
 	AppID string
-	Org   string // the one installation this App has
+	Org   string // the one installation of this App
 	Key   *rsa.PrivateKey
 	HTTP  *http.Client
 	Sleep func(time.Duration)
@@ -102,7 +111,7 @@ type GitHub struct {
 	token string
 }
 
-// Prepare mints the installation token, once per process.
+// Prepare gets the installation token one time in each process.
 func (g *GitHub) Prepare(ctx context.Context) error {
 	if g.token != "" {
 		return nil
@@ -148,8 +157,9 @@ func (g *GitHub) mint(ctx context.Context) (string, error) {
 	return tok.Token, nil
 }
 
-// call sends one request, retrying transient failures after each backoff step. safe says a
-// repeat has no effect beyond the first; see retryable.
+// call sends one request. After a temporary error, it waits for the next backoff step and
+// tries again. safe is true when a second copy of the request has no more effect than the
+// first copy. Refer to retryable.
 func (g *GitHub) call(ctx context.Context, method, path, auth string, body []byte, safe bool) ([]byte, error) {
 	for attempt := 0; ; attempt++ {
 		b, err := g.once(ctx, method, path, auth, body)

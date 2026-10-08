@@ -1,6 +1,7 @@
-// katoptra-dispatch is one tick of the katoptra scheduler: fire every job whose latest slot
-// has not been fired yet, record it first, then ping the scheduler's healthcheck. A systemd
-// timer runs it every five minutes; see module.nix.
+// katoptra-dispatch is one tick of the katoptra scheduler. It finds each job with a latest
+// slot that the state does not contain. It records that slot first, and then it starts the
+// job. At the end, it sends a ping to the healthcheck of the scheduler. A systemd timer
+// starts it at intervals of five minutes (refer to module.nix).
 package main
 
 import (
@@ -20,11 +21,13 @@ import (
 	"github.com/katoptra/dispatch/schedules"
 )
 
-// pingLimit caps the error text sent with a /fail ping. healthchecks.io keeps 100 kB.
+// pingLimit is the maximum length of the error text in a /fail ping. healthchecks.io keeps
+// 100 kB.
 const pingLimit = 10 << 10
 
-// githubBudget bounds everything GitHub gets in a tick, retries included, so the ping
-// (at most 3 x 30 s + 4 s) still lands inside the unit's TimeoutStartSec=4min.
+// githubBudget is the maximum time for all GitHub requests in a tick, with the retries
+// included. Thus, the ping (a maximum of 3 x 30 s + 4 s) can complete in the
+// TimeoutStartSec=4min of the unit.
 const githubBudget = 2 * time.Minute
 
 func main() {
@@ -39,7 +42,7 @@ func main() {
 	os.Exit(run(*dryRun, log))
 }
 
-// printJobs is the table `task targets` shows; `task runs` reads its first column.
+// printJobs prints the table that `task targets` shows. `task runs` reads its first column.
 func printJobs(w io.Writer) {
 	tw := tabwriter.NewWriter(w, 0, 0, 2, ' ', 0)
 	fmt.Fprintln(tw, "JOB\tSLOT\tUTC")
@@ -110,7 +113,7 @@ func newGitHub(creds string, client *http.Client) (*GitHub, error) {
 	}, nil
 }
 
-// credential reads one file systemd's LoadCredential= put in $CREDENTIALS_DIRECTORY.
+// credential reads one file that systemd put in $CREDENTIALS_DIRECTORY with LoadCredential=.
 func credential(dir, name string) (string, error) {
 	if dir == "" {
 		return "", fmt.Errorf("credential %s: CREDENTIALS_DIRECTORY is not set", name)
@@ -126,9 +129,13 @@ func credential(dir, name string) (string, error) {
 	return v, nil
 }
 
-// ping reports the tick to healthchecks.io: the URL itself when clean, /fail with the errors
-// as the body otherwise. Three attempts; a miss is the caller's warning, not a failed tick.
-// The URL is the check's credential, so no error returned here carries it.
+// ping sends the result of the tick to healthchecks.io. If the tick has no errors, ping
+// sends the request to the URL. If the tick has errors, ping sends the request to /fail,
+// with the errors as the body.
+//
+// ping sends the request a maximum of three times. If the ping does not get to
+// healthchecks.io, the caller records a warning, not an error. The URL is the credential of
+// the check. Thus, no error from ping contains the URL.
 func ping(client *http.Client, url string, errs []string, sleep func(time.Duration)) error {
 	body := strings.Join(errs, "\n")
 	if len(errs) > 0 {

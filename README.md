@@ -9,7 +9,7 @@
 
 <h1 align="center">dispatch</h1>
 
-<p align="center">Runs the katoptra mirrors on a schedule.</p>
+<p align="center">The scheduler that starts the katoptra mirrors.</p>
 
 <p align="center">
   <a href="https://github.com/katoptra/dispatch/actions/workflows/check.yml"><img src="https://github.com/katoptra/dispatch/actions/workflows/check.yml/badge.svg" alt="check"></a>
@@ -17,48 +17,53 @@
   <a href="https://github.com/katoptra/dispatch#how-it-works"><img src="https://healthchecks.io/b/2/254c8ab8-5b1c-40e5-ae69-f34413b6b053.svg" alt="tick"></a>
 </p>
 
-Each katoptra mirror is a GitHub Actions workflow with no schedule of its own. This repo
-starts them.
+Each katoptra mirror is a GitHub Actions workflow that has no schedule. The scheduler in
+this repository starts these workflows.
 
-- A systemd timer on a NixOS host runs it every five minutes.
-- Each run starts any workflow that is due, then pings a healthcheck.
-- If the host goes down, each job that missed a run fires once when it comes back.
-- A job never fires twice for the same time slot.
-- It is one Go binary with no dependencies outside the standard library.
+- A systemd timer on a NixOS host starts a tick at intervals of five minutes.
+- Each tick finds the jobs to start and starts their workflows. Then the tick sends a ping
+  to a healthcheck.
+- If the host stops, each job that had no run for its slots gets one run when the host
+  starts again.
+- A job does not get two runs for the same slot.
+- The scheduler is one Go binary, and it uses only the Go standard library.
 
 ## Adding a job
 
-Each repo gets one file in [`schedules/`](schedules), named after the repo:
+Each repository has one file in [`schedules/`](schedules). The file has the name of the
+repository:
 
 ```go
 // schedules/ctan.go
 var _ = register(Job{Repo: "katoptra/ctan", File: "sync.yml", Slots: Hourly})
 ```
 
-Every slot runs at 42 minutes past the hour, UTC:
+Each slot is at minute 42 of the hour, UTC:
 
 | Slot | UTC | Pacific (winter) |
 |---|---|---|
-| `Hourly` | every hour at :42 | every hour at :42 |
+| `Hourly` | each hour at :42 | each hour at :42 |
 | `Evening` | 05:42 | 21:42 |
 | `Overnight` | 11:42 | 03:42 |
 | `Morning` | 17:42 | 09:42 |
 | `Afternoon` | 23:42 | 15:42 |
 
-- `S0` to `S23` name each hour. The four daily names are shortcuts for `S5`, `S11`, `S17`
-  and `S23`.
-- Combine slots with `|`, like `Morning | Evening`.
-- A misspelled slot won't compile.
+- `S0` to `S23` are the names of the hours. The four daily names are the same slots as
+  `S5`, `S11`, `S17` and `S23`.
+- To put slots together, use `|`, for example `Morning | Evening`.
+- An incorrect slot name causes a compile error.
 
-The workflow needs three things that this repo can't check for you:
+This repository cannot examine the workflow. Make sure that the workflow has these three
+items:
 
-- `workflow_dispatch:` under `on:`.
-- A `concurrency` group with `cancel-in-progress: false`, so a second start waits for the
-  first run to finish.
-- Its own healthcheck ping. The scheduler starts runs but never sees whether they pass.
+- It has `workflow_dispatch:` in `on:`.
+- It has a `concurrency` group with `cancel-in-progress: false`. Thus, a second start waits
+  for the end of the first run.
+- It sends a ping to its healthcheck. The scheduler starts runs, but it does not know the
+  result of a run.
 
-A change goes live when the host's flake lock moves to the new commit. A new job fires on
-the next tick.
+The host gets a change when the host's flake moves its lock to a new commit of this flake.
+A new job starts at the next tick.
 
 ## How it works
 
@@ -70,41 +75,46 @@ flowchart LR
   token -. "GitHub down, nothing saved" .-> ping
 ```
 
-The timer fires at :02, :07 and every five minutes after that. Each tick:
+The timer starts a tick at :02, at :07, and at intervals of five minutes after that. Each
+tick does these steps:
 
-1. Loads `state.json`, which holds the last slot each job fired for.
-2. Works out which jobs are due. A job that missed several slots is due once, for the
-   latest one.
-3. Gets a token for the GitHub App.
-4. Saves the new state.
-5. Starts each due workflow on `main`.
-6. Pings the healthcheck: the plain URL if everything worked, or `/fail` with the errors.
+1. It loads `state.json`, which contains the last dispatched slot of each job.
+2. It finds the jobs to start. If a job had no run for some slots, it starts one time, for
+   the latest slot.
+3. It gets a token for the GitHub App.
+4. It saves the new state.
+5. It starts the workflow of each of these jobs on `main`.
+6. It sends a ping to the healthcheck: to the URL if the tick has no errors, or to `/fail`
+   with the errors.
 
-The state is saved before any workflow starts. If a tick crashes after that, the run for
-that slot is lost and the job runs again at its next slot. No run ever starts twice. If
-GitHub is down when the token is requested, nothing is saved and the next tick tries again.
+The tick saves the state before it starts a workflow. If a crash stops the tick after that
+step, the job gets no run for that slot. The job starts again at its next slot. Thus, a run
+does not start two times. If GitHub is not available when the tick sends the token request,
+the tick does not save the state. Then the next tick tries again.
 
-Retries wait 10, 20 and then 40 seconds:
+Before each retry, the scheduler waits 10, 20, and then 40 seconds. The retry rules are:
 
-- Token requests retry on any 5xx, 408, 429 or network error.
-- Workflow starts retry only on 408, 429 or a connection that never opened. GitHub can
-  return a 5xx after it has already started the run, so a retry could start it twice.
-- GitHub gets two minutes per tick, which leaves time to ping the healthcheck.
+- A token request tries again after a 5xx, 408, 429, or network error.
+- A workflow start tries again only after a 408, a 429, or a connection that did not open.
+  GitHub can send a 5xx after it started the run. Then a retry can start a second run.
+- GitHub gets two minutes in each tick. Thus, the tick has time to send its ping to the
+  healthcheck.
 
-The design and the reasons behind it are in [`CLAUDE.md`](CLAUDE.md).
+[`CLAUDE.md`](CLAUDE.md) gives the design and the cause of each rule.
 
-## Running it
+## Operating it
 
-`task` on its own prints the menu. From a laptop:
+`task` without a task name prints the menu. Use these commands on a laptop:
 
 ```sh
-task check          # gofmt, go vet and go test in the toolbox image, same as CI
-task targets        # every job and when it runs
-task runs           # recent runs of each job on GitHub (needs gh logged in)
-task runs LIMIT=10  # more of them
+task check          # gofmt, go vet and go test in the toolbox image, the same as CI
+task targets        # each job and its slot times, in UTC
+task runs           # the last 3 runs of each job on GitHub (gh must have a login)
+task runs LIMIT=10  # more runs for each job
 ```
 
-Runs started by this repo show up as `workflow_dispatch`. On the host:
+On GitHub, a run that the scheduler starts has the event `workflow_dispatch`. Use these
+commands on the host:
 
 ```sh
 systemctl list-timers katoptra-dispatch.timer
@@ -114,30 +124,39 @@ sudo cat /var/lib/private/katoptra-dispatch/state.json
 sudo STATE_DIRECTORY=/var/lib/private/katoptra-dispatch katoptra-dispatch --dry-run
 ```
 
-`--dry-run` shows what is due and why, without saving, starting or pinging anything.
+`--dry-run` shows the jobs to start, with the slot of each and its last dispatched slot. It
+does not save the state, start a workflow, or send a ping.
 
 ### When something goes wrong
 
-- **The healthcheck goes quiet.** The host or its timer is down. When it comes back, each
-  job that missed a slot fires once.
-- **The healthcheck gets a `/fail` ping.** The error is in the ping body and in
-  `journalctl -u katoptra-dispatch -p err`. That slot is skipped, and the job runs again
-  at its next slot.
-- **A workflow start returns 404.** The repo's default branch isn't `main`, or the workflow
-  file isn't there.
-- **Every tick fails on `state.json`.** The file is corrupt, and nothing runs until it is
-  fixed. Repair it by hand or delete it. Deleting it makes every job fire once.
+- **The healthcheck gets no pings.** The host or its timer does not operate. When the host
+  and the timer operate again, each job that had no run for a slot gets one run.
+- **The healthcheck gets a `/fail` ping.** The body of the ping and
+  `journalctl -u katoptra-dispatch -p err` show the error. If the error is from a workflow
+  start, that job gets no run for that slot, and it starts again at its next slot. If the
+  error occurs before the tick saves the state, the tick saves no slot, and the next tick
+  tries again.
+- **A workflow start gets a 404.** The default branch of the repository is not `main`, or
+  the repository does not have the workflow file.
+- **Each tick stops with an error about `state.json`.** The file is corrupted. No job starts
+  until you repair the file. Repair or delete the file manually. If you delete it, each job
+  starts one time.
 
-## Run your own
+## Want your own?
 
-1. **Fork this repo** and replace the files in `schedules/` with your own jobs. The tests
-   only accept `katoptra/` repos, so change that prefix to your organization's.
-2. **Create a GitHub App** owned by your organization, with one permission: Actions, read
-   and write. It needs no webhook. Install it on every repo in the organization so new
-   repos are covered automatically. Note the App ID and generate a private key. The key
-   works as GitHub issues it.
-3. **Create a healthchecks.io check** with a 5 minute period and a 10 minute grace.
-4. **Add the flake to your NixOS host** and give the module three files:
+1. **Fork this repository.** Replace the files in `schedules/` with files for your jobs.
+   The tests accept only `katoptra/` repositories. Change that prefix in the tests to the
+   name of your organization. In `main.go`, change `Org: "katoptra"` to the name of your
+   organization.
+2. **Make a GitHub App in your organization:**
+   1. Give the App one permission: Actions, read and write. A webhook is not necessary.
+   2. Install the App on all repositories in the organization. Then each new repository
+      also gets the App automatically.
+   3. Record the App ID.
+   4. Make a private key. You can use the key in the format that GitHub gives.
+3. **Make a healthchecks.io check** with a period of 5 minutes and a grace time of 10
+   minutes.
+4. **Add the flake to your NixOS host.** Give the module the paths of three files:
 
    ```nix
    {
@@ -151,15 +170,20 @@ sudo STATE_DIRECTORY=/var/lib/private/katoptra-dispatch katoptra-dispatch --dry-
    }
    ```
 
-   Keep the paths as strings. A Nix path would copy the secrets into the Nix store, where
-   anyone on the host can read them. The files are loaded with `LoadCredential=`, so
-   root-owned files with mode 0400 work.
-5. **Check it.** On a laptop with go-task and Docker or Apple `container`, run `task check`
-   and `task targets`. `nix flake check` builds the package and the systemd units;
-   [`CLAUDE.md`](CLAUDE.md) shows how to run it without nix installed. The only real test
-   of the App is a live tick: run `sudo systemctl start katoptra-dispatch` on the host and
-   read the journal.
+   **Caution:** Write each path as a string, not as a Nix path. A Nix path puts a copy of the
+   secret in the Nix store. All users on the host can read the Nix store.
+
+   systemd loads the files with `LoadCredential=`. Thus, the files can have the owner `root`
+   and the mode 0400.
+5. **Make sure that the scheduler operates:**
+   1. On a laptop with go-task and Docker or Apple `container`, use `task check`. Then use
+      `task targets`.
+   2. Use `nix flake check`. It builds the package and the systemd units.
+      [`CLAUDE.md`](CLAUDE.md) shows how to use it without nix.
+   3. Only a tick on the host is a full test of the App. On the host, use
+      `sudo systemctl start katoptra-dispatch`. Then read the journal.
 
 ## License
 
-MIT. Built by [Josh Vaughen](https://ijosh.com). Pull requests are welcome.
+The license is MIT. [Josh Vaughen](https://ijosh.com) made this repository. You can send a
+pull request.

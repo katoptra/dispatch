@@ -14,15 +14,15 @@ import (
 	"github.com/katoptra/dispatch/schedules"
 )
 
-// stateFile holds, per job id, the last slot that job was fired for.
+// stateFile contains the last dispatched slot of each job, by job id.
 const stateFile = "state.json"
 
-// State maps a job id to the last slot fired for it, in UTC.
+// State is a map from a job id to the last dispatched slot of that job, in UTC.
 type State map[string]time.Time
 
-// LoadState reads dir's state file. A missing file is empty state, the first run; anything
-// unreadable or malformed is an error, never empty state, because empty state would fire
-// every job again for slots already sent.
+// LoadState reads the state file in dir. A missing file is empty state: the first tick. A
+// file that it cannot read, or that has an incorrect format, is an error, not empty state.
+// This is because empty state starts each job again for dispatched slots.
 func LoadState(dir string) (State, error) {
 	b, err := os.ReadFile(filepath.Join(dir, stateFile))
 	if errors.Is(err, os.ErrNotExist) {
@@ -35,14 +35,16 @@ func LoadState(dir string) (State, error) {
 	if err := json.Unmarshal(b, &s); err != nil {
 		return nil, fmt.Errorf("state file %s is corrupt: %w", filepath.Join(dir, stateFile), err)
 	}
-	if s == nil { // `null` parses; it is not a missing file, and must not act like one
+	// json.Unmarshal accepts `null`. But a `null` file is not a missing file: LoadState
+	// gives an error for it, not empty state.
+	if s == nil {
 		return nil, fmt.Errorf("state file %s holds no object", filepath.Join(dir, stateFile))
 	}
 	return s, nil
 }
 
-// SaveState replaces dir's state file atomically: a crash leaves the old file or the new
-// one, never half of either.
+// SaveState replaces the state file in dir in one step. After a crash, dir contains the
+// full previous file or the full new file.
 func SaveState(dir string, s State) error {
 	b, err := json.MarshalIndent(s, "", "  ")
 	if err != nil {
@@ -52,7 +54,7 @@ func SaveState(dir string, s State) error {
 	if err != nil {
 		return err
 	}
-	defer os.Remove(tmp.Name()) // a no-op once renamed
+	defer os.Remove(tmp.Name()) // a no-op after os.Rename
 	if _, err := tmp.Write(append(b, '\n')); err != nil {
 		tmp.Close()
 		return err
@@ -75,14 +77,15 @@ func SaveState(dir string, s State) error {
 	return d.Sync()
 }
 
-// Fire is one job due for one slot.
+// Fire is one job to dispatch for one slot.
 type Fire struct {
 	Job  schedules.Job
 	Slot time.Time
 }
 
-// Plan returns the jobs due at now: those with no recorded slot, or whose latest slot is
-// after the one recorded. However many slots a job missed, it is due once, for the latest.
+// Plan gives the jobs to dispatch at now. A job is in the result if it has no recorded
+// slot, or if its latest slot is after its recorded slot. If there are one or more slots
+// after the recorded slot, the job is in the result one time, for the latest slot.
 func Plan(jobs []schedules.Job, s State, now time.Time) (fires []Fire, warnings []string) {
 	for _, j := range jobs {
 		due, ok := j.Slots.Latest(now)
@@ -102,8 +105,9 @@ func Plan(jobs []schedules.Job, s State, now time.Time) (fires []Fire, warnings 
 	return fires, warnings
 }
 
-// next is the state to write before dispatching fires: every current job's entry, with the
-// fired slots recorded. Entries for jobs no longer registered are dropped.
+// next is the state to write before Tick dispatches fires. It keeps the entry of each job
+// in jobs, and it records the slot of each fire. It does not keep the entry of a job that
+// is not in jobs.
 func next(jobs []schedules.Job, s State, fires []Fire) State {
 	n := State{}
 	for _, j := range jobs {
@@ -117,20 +121,22 @@ func next(jobs []schedules.Job, s State, fires []Fire) State {
 	return n
 }
 
-// Dispatcher starts workflow runs. Prepare does everything that starts nothing (credentials),
-// so its failure can leave the slots unrecorded; Dispatch starts one run.
+// Dispatcher starts workflow runs. Prepare does the steps that start no run (the
+// credentials). Thus, if Prepare gives an error, Tick can stop before it records the slots.
+// Dispatch starts one run.
 type Dispatcher interface {
 	Prepare(ctx context.Context) error
 	Dispatch(ctx context.Context, repo, file string) error
 }
 
-// Tick is one run of the timer: lock, plan, prepare, record, dispatch. Every failure goes to log;
-// the caller reads log.Errors() for the exit code and the ping.
+// Tick is one tick of the timer: lock, plan, prepare, record, dispatch. Each error goes to
+// log. The caller reads log.Errors() for the exit code and the ping.
 //
-// The slots are recorded before anything is dispatched, so a crash or a failed dispatch
-// loses that slot rather than repeating it: at most once per slot. Prepare comes before the
-// record, so a GitHub or network outage before any run could start costs five minutes, not
-// the slot.
+// Tick records the slots before it dispatches. Thus, after a crash or an error from
+// Dispatch, that slot gets no run. A slot does not get two runs: a maximum of one run for
+// each slot. Tick does Prepare before it records the slots. Thus, if GitHub or the network
+// is not available before a run can start, the slot gets its run at the next tick, after
+// five minutes.
 func Tick(ctx context.Context, dir string, jobs []schedules.Job, now time.Time, d Dispatcher, dryRun bool, log *Log) {
 	unlock, err := lock(dir)
 	if err != nil {
@@ -177,8 +183,9 @@ func Tick(ctx context.Context, dir string, jobs []schedules.Job, now time.Time, 
 	}
 }
 
-// lock takes an exclusive flock on dir itself. systemd already refuses to start a oneshot
-// that is still running; this covers the binary run by hand beside it.
+// lock gets an exclusive flock on the directory dir, not on a file in it. systemd does not
+// start a oneshot unit while that unit operates. The flock also prevents two ticks at the
+// same time when you start the binary manually.
 func lock(dir string) (func(), error) {
 	f, err := os.Open(dir)
 	if err != nil {
@@ -200,9 +207,9 @@ func lastFired(s State, j schedules.Job) string {
 	return "never"
 }
 
-// Log writes to the journal through stdout and stderr, and keeps the errors for the ping.
-// Under systemd (JOURNAL_STREAM set) lines carry the sd-daemon priority prefix, so
-// `journalctl -p err` finds the errors.
+// Log writes to the journal through stdout and stderr. It keeps the errors for the ping.
+// When systemd starts the binary (JOURNAL_STREAM is set), the warning and error lines have
+// the sd-daemon priority prefix. Thus, `journalctl -p err` finds the errors.
 type Log struct {
 	Out, Err io.Writer
 	Journal  bool
@@ -225,5 +232,5 @@ func (l *Log) write(w io.Writer, prio, format string, a ...any) {
 	fmt.Fprintf(w, prio+format+"\n", a...)
 }
 
-// Errors is every error logged so far.
+// Errors gives each error that Error recorded before this call.
 func (l *Log) Errors() []string { return l.errs }

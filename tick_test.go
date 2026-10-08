@@ -26,8 +26,8 @@ func utc(s string) time.Time {
 	return t
 }
 
-// fake records each dispatch, reads the state file as it stood at that moment, and fails
-// the jobs named in fail. Prepare returns prepErr.
+// fake records each job that Dispatch gets, and reads the state file as it is at that time.
+// It gives an error for each job in fail. Prepare gives prepErr.
 type fake struct {
 	dir      string
 	fail     map[string]bool

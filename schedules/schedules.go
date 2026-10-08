@@ -1,14 +1,18 @@
-// Package schedules is what the scheduler starts, and when. One file per katoptra repo,
-// named for the half of "owner/name" after the slash, each adding its jobs to the list
-// below. Changing what runs touches only this directory.
+// Package schedules tells the scheduler which jobs to start, and when. Each katoptra
+// repository has one file here. The file name is the part of "owner/name" after the slash.
+// Each file adds the jobs of its repository to the list below. A change to the jobs or to
+// their slots is only in this directory.
 //
-// Before adding a workflow, confirm all three. Nothing here can check them, and a workflow
-// that fails any of them is dispatched into silence:
+// Before you add a workflow, make sure that it has these three items:
 //
-//  1. It declares `workflow_dispatch:` in `on:`.
-//  2. It declares a `concurrency` group with `cancel-in-progress: false`, so a dispatch
-//     arriving during a run queues instead of doubling up.
-//  3. The workload pings its own healthcheck. This repo never learns whether a run passed.
+//  1. It has `workflow_dispatch:` in `on:`.
+//  2. It has a `concurrency` group with `cancel-in-progress: false`. Thus, a workflow start
+//     during a run waits in the queue, and two runs do not operate at the same time.
+//  3. The workflow sends a ping to its healthcheck. This repository does not get the
+//     result of a run.
+//
+// No code here can examine these items. If a workflow does not have all three, a problem
+// with its runs can stay unknown.
 package schedules
 
 import (
@@ -17,12 +21,12 @@ import (
 	"time"
 )
 
-// Slot is a set of hours of the UTC day. Each hour's slot fires at HH:42. Slots combine
-// with |, so a job in two slots says `Morning | Evening`, and a misspelt name fails to
-// compile.
+// Slot is a set of hours of the UTC day. The slot of each hour is at HH:42. To put slots
+// together, use |. For example, a job in two slots has `Morning | Evening`. An incorrect
+// name causes a compile error.
 type Slot uint32
 
-// The 24 hourly slots, S0 at 00:42 UTC through S23 at 23:42 UTC.
+// The 24 hourly slots, S0 at 00:42 UTC to S23 at 23:42 UTC.
 const (
 	S0 Slot = 1 << iota
 	S1
@@ -50,8 +54,8 @@ const (
 	S23
 )
 
-// Names for the daily slots, six hours apart. Pacific in the comments is winter time; in
-// summer each is an hour later.
+// Names for the daily slots, six hours apart. The Pacific times in the comments are winter
+// times. In summer, each Pacific time is one hour after the time in the comment.
 const (
 	Evening   = S5  // 05:42 UTC, 21:42 PST
 	Overnight = S11 // 11:42 UTC, 03:42 PST
@@ -60,12 +64,14 @@ const (
 	Hourly    = Slot(1<<24 - 1)
 )
 
-// Minute is the minute past the hour every slot fires at: off the hour, which GitHub sheds
-// first, and on a tick of the */5 timer that starts at :02.
+// Minute is the minute of the hour for each slot. It is not minute 0: when the load on
+// GitHub is high, GitHub decreases the load at minute 0 first. It is also on a tick of the
+// */5 timer that starts at :02.
 const Minute = 42
 
-// Latest is the most recent slot time in s at or before now, in UTC. Today's and
-// yesterday's slots are always enough to find it. False when s holds no hour.
+// Latest gives the latest slot time in s: the last slot time at or before now, in UTC. The
+// slots of the same day and of the day before are always sufficient to find it. The bool is
+// false when s contains no hour.
 func (s Slot) Latest(now time.Time) (time.Time, bool) {
 	now = now.UTC()
 	for day := 0; day < 2; day++ {
@@ -83,7 +89,7 @@ func (s Slot) Latest(now time.Time) (time.Time, bool) {
 	return time.Time{}, false
 }
 
-// Times is each slot's firing time, "HH:42" UTC, earliest first.
+// Times gives the time of each slot in s as "HH:42" UTC, in the sequence of the day.
 func (s Slot) Times() []string {
 	var out []string
 	for hour := 0; hour < 24; hour++ {
@@ -98,7 +104,8 @@ var names = map[Slot]string{
 	Hourly: "Hourly", Evening: "Evening", Overnight: "Overnight", Morning: "Morning", Afternoon: "Afternoon",
 }
 
-// String names s as a schedule file would: "Hourly", "Morning", "Evening | Morning", "S3".
+// String gives the name of s as a schedule file writes it: "Hourly", "Morning",
+// "Evening | Morning", "S3".
 func (s Slot) String() string {
 	if n, ok := names[s]; ok {
 		return n
@@ -118,14 +125,15 @@ func (s Slot) String() string {
 	return strings.Join(parts, " | ")
 }
 
-// Job is one workflow in one repo, dispatched on `main` in every slot it holds.
+// Job is one workflow in one repository. The scheduler dispatches it on `main` in each of
+// its slots.
 type Job struct {
 	Repo  string // "katoptra/<name>"
-	File  string // workflow file name, e.g. "sync.yml"
+	File  string // the name of the workflow file, for example "sync.yml"
 	Slots Slot
 }
 
-// ID is the job's key in the state file: "katoptra/ctan/sync.yml".
+// ID is the key of the job in the state file: "katoptra/ctan/sync.yml".
 func (j Job) ID() string { return j.Repo + "/" + j.File }
 
 var jobs []Job
@@ -135,5 +143,5 @@ func register(j ...Job) bool {
 	return true
 }
 
-// Jobs is every registered job.
+// Jobs gives all jobs that register added, in a new slice.
 func Jobs() []Job { return append([]Job(nil), jobs...) }
