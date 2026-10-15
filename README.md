@@ -62,6 +62,11 @@ items:
 - It sends a ping to its healthcheck. The scheduler starts runs, but it does not know the
   result of a run.
 
+The mirror repositories do not contain the times of their runs. This repository is the only
+location of the slots. The cron expression of each healthcheck has the same times as the
+slots of its job, in UTC. When you change the slots of a job, change that cron expression
+right after the host gets the change.
+
 The host gets a change when the host's flake moves its lock to a new commit of this flake.
 A new job starts at the next tick.
 
