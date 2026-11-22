@@ -190,5 +190,6 @@ does not save the state, start a workflow, or send a ping.
 
 ## License
 
-The license is MIT. [Josh Vaughen](https://ijosh.com) made this repository. You can send a
-pull request.
+Copyright (C) 2026 Josh Vaughen. This repository is free software under the
+[GNU General Public License](LICENSE), version 3 or (at your option) any later version.
+[Josh Vaughen](https://ijosh.com) made this repository. You can send a pull request.
